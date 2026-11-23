@@ -45,11 +45,12 @@ if [ "${RECORD_VIDEO:-false}" = true ]; then
     done ) &
   REC=$!
 fi
-# 5. The agent: only the listed tools, nothing else (another model API if llm_base_url is set)
+# 5. The agent: Antigravity CLI headless mode
 source scripts/llm_env.sh || exit 1
-claude -p "Read $BRIEF and personas.json, then do the mission until the final report. PERSONA=$PERSONA PLATFORM=android APP_ID=$APP_ID. Device: ${DEVICE}, font scale x${FONT_SCALE:-1.0}, theme ${THEME:-light}, language $LOCALE. Report anything that does not fit this screen (cut text, off-screen buttons, broken layout)." \
-  --model "${MODEL:-sonnet}" --max-turns 400 --output-format json \
-  --allowedTools "Bash(adb:*),Bash(python3 scripts/android/screen.py:*),Bash(python3 scripts/android/type.py:*),Bash(sleep:*),Bash(ls:*),Bash(cat:*),Bash(mkdir:*),Read,Write,Edit" \
+AGY_SETTINGS='{"modelProvider":"gemini","allowNonWorkspaceAccess":false}'
+agy -p "Read $BRIEF and personas.json, then do the mission until the final report. Use only the Android tools listed in $BRIEF (adb, python3 scripts/android/screen.py, python3 scripts/android/type.py) and file read/write tools under results/$PERSONA/. PERSONA=$PERSONA PLATFORM=android APP_ID=$APP_ID. Device: ${DEVICE}, font scale x${FONT_SCALE:-1.0}, theme ${THEME:-light}, language $LOCALE. Report anything that does not fit this screen (cut text, off-screen buttons, broken layout)." \
+  --model "${MODEL:-gemini-3.8-flash-high}" --output-format json --print-timeout 45m \
+  --dangerously-skip-permissions --settings "$AGY_SETTINGS" \
   > results/agent-output.json 2> results/agent-errors.txt
 CODE=$?
 python3 scripts/agent_status.py results/agent-output.json results/agent-errors.txt "$PERSONA" || true

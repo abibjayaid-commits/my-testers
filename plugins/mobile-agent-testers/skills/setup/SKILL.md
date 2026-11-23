@@ -1,14 +1,14 @@
 ---
 name: setup
-description: Set up and run parallel AI testers for an iOS/Android app (Flutter, React Native, Expo, native, KMP, Capacitor, MAUI) - one headless Claude Code agent per iOS Simulator or Android emulator, each with a persona and a different device, on GitHub Actions, with encrypted reports.
+description: Set up and run parallel AI testers for an iOS/Android app (Flutter, React Native, Expo, native, KMP, Capacitor, MAUI) - one headless Antigravity CLI (agy) agent per iOS Simulator or Android emulator, each with a persona and a different device, on GitHub Actions, with encrypted reports.
 ---
 
 # Set up mobile agent testers
 
 Goal: the user gets a testers repo where one workflow builds their app, boots
 one phone per persona (Android emulators on Linux runners, iOS Simulators on
-macOS runners), lets a Claude Code agent use the app like a new user, and
-returns encrypted reports with screenshots, merged into one SUMMARY.md.
+macOS runners), lets an Antigravity CLI (`agy`) agent use the app like a new
+user, and returns encrypted reports with screenshots, merged into one SUMMARY.md.
 
 Template and full docs: https://github.com/pierridotite/mobile-agent-testers
 
@@ -21,8 +21,8 @@ Template and full docs: https://github.com/pierridotite/mobile-agent-testers
   Fine: open-source app, or testers inside the app's own repo. Grey zone:
   pulling a closed-source app into a public repo only to get free Macs. Say
   so, and offer the private-repo or self-hosted alternative.
-- A Claude Pro/Max subscription can be used up quickly: 20 agents at
-  once used a 5-hour window in about 15 minutes. Recommend batches of 6-10.
+- Parallel agents consume Gemini API quota quickly: recommend batches of 6-10
+  personas at a time (use `gemini-3.8-flash-high` for fast, low-cost runs).
 - Logs of a public repo are public. The template encrypts build logs, apps,
   screenshots and reports. Never add a step that prints them.
 
@@ -37,7 +37,8 @@ cd <name> && ./setup.sh
 
 The user runs `setup.sh` in their own terminal, not through you. It creates
 the results key pair, configures the repo and pushes the public key. It asks
-the user directly, in that terminal, for the Claude sign-in it needs.
+the user directly, in that terminal, for `GEMINI_API_KEY` (from Google AI Studio)
+required by Antigravity CLI in headless CI.
 
 Credentials rule: you never read, print, store or ask for any credential or
 private key. Never open files under `~/.mobile-agent-testers/`. If the user
@@ -108,7 +109,7 @@ private key stays with them):
 bash scripts/collect.sh <run id>      # downloads + decrypts into runs/<id>/
 ```
 
-Then read `runs/<id>/SUMMARY.md` (if the `claude` CLI is installed, reports that
+Then read `runs/<id>/SUMMARY.md` (if `agy` or `claude` CLI is installed, reports that
 describe the same bug are grouped, with how many personas hit each one), then
 open the screenshots of each important issue before you trust it: agents
 sometimes misread a screen. Check that no agent stopped on a usage limit

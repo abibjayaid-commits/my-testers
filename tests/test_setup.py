@@ -49,30 +49,23 @@ class Setup(unittest.TestCase):
                               text=True, env=env)
         return proc, secrets
 
-    def test_subscription_token_after_a_wrong_choice_and_an_empty_paste(self):
-        proc, secrets = self.run_setup("5\n1\n\n  sk-ant-oat01-abc \n")
+    def test_api_key_refused_then_accepted_never_on_the_command_line(self):
+        proc, secrets = self.run_setup("\nAIza-bad\n  AIza-good \n")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual((secrets / "CLAUDE_CODE_OAUTH_TOKEN").read_text(), "sk-ant-oat01-abc")
+        self.assertEqual((secrets / "GEMINI_API_KEY").read_text(), "AIza-good")
         self.assertIn("Nothing pasted", proc.stdout)
-        self.assertNotIn("Warning", proc.stdout)
-        self.assertFalse((secrets / "curl-args").exists())   # tokens are not checked online
+        self.assertIn("Google refused this key (401)", proc.stdout)
+        self.assertIn("Key checked with Google Gemini API", proc.stdout)
+        self.assertNotIn("AIza", (secrets / "curl-args").read_text())
         self.assertIn("about 20 min", proc.stdout)
         self.assertIn("gh run watch", proc.stdout)
 
-    def test_api_key_refused_then_accepted_never_on_the_command_line(self):
-        proc, secrets = self.run_setup("2\nsk-ant-api03-bad\nsk-ant-api03-good\n")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual((secrets / "ANTHROPIC_API_KEY").read_text(), "sk-ant-api03-good")
-        self.assertIn("Anthropic refused this key (401)", proc.stdout)
-        self.assertIn("Key checked with Anthropic", proc.stdout)
-        self.assertNotIn("sk-ant", (secrets / "curl-args").read_text())
-
     def test_warns_about_an_unexpected_prefix_and_a_private_repo(self):
-        proc, secrets = self.run_setup("1\nsomething-else\n", visibility="PRIVATE")
+        proc, secrets = self.run_setup("something-else\n", visibility="PRIVATE")
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertIn("does not start with sk-ant-oat", proc.stdout)
+        self.assertIn("does not start with AIza", proc.stdout)
         self.assertIn("someone/testers is private", proc.stdout)
-        self.assertEqual((secrets / "CLAUDE_CODE_OAUTH_TOKEN").read_text(), "something-else")
+        self.assertEqual((secrets / "GEMINI_API_KEY").read_text(), "something-else")
 
 
 if __name__ == "__main__":

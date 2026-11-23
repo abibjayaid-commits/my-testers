@@ -32,6 +32,17 @@ class Classify(unittest.TestCase):
         self.assertEqual(details, {"num_turns": 37, "total_cost_usd": 0.312})
         self.assertEqual(agent_status.describe(status, details), "finished (37 turns, $0.31)")
 
+    def test_finished_antigravity_format(self):
+        status, details = self.status({"conversation_id": "abc", "status": "SUCCESS",
+                                       "response": SECRET_TEXT, "num_turns": 14, "duration_seconds": 42.3})
+        self.assertEqual(status, "finished")
+        self.assertEqual(details, {"num_turns": 14, "duration_seconds": 42.3})
+        self.assertEqual(agent_status.describe(status, details), "finished (14 turns, 42s)")
+
+    def test_antigravity_api_key_invalid(self):
+        status, _ = self.status({"status": "ERROR", "error": "Error 400, reason: API_KEY_INVALID"})
+        self.assertEqual(status, "auth")
+
     def test_out_of_turns(self):
         self.assertEqual(self.status({"subtype": "error_max_turns", "num_turns": 400})[0], "max_turns")
 
@@ -80,7 +91,7 @@ class Output(unittest.TestCase):
         (d / "e.txt").write_text(errors, encoding="utf-8")
         summary = d / "summary.md"
         full_env = {k: v for k, v in os.environ.items()
-                    if k not in ("GITHUB_ACTIONS", "LLM_BASE_URL", "ANTHROPIC_API_KEY")}
+                    if k not in ("GITHUB_ACTIONS", "LLM_BASE_URL", "ANTHROPIC_API_KEY", "GEMINI_API_KEY")}
         full_env.update(env or {})
         if full_env.get("GITHUB_ACTIONS") == "true":
             full_env["GITHUB_STEP_SUMMARY"] = str(summary)
@@ -93,8 +104,8 @@ class Output(unittest.TestCase):
         out, summary = self.run_script({"subtype": "success", "is_error": True,
                                         "result": "You've hit your 5-hour limit. " + SECRET_TEXT},
                                        env={"GITHUB_ACTIONS": "true"})
-        self.assertTrue(out.startswith("::warning title=anna stopped on a Claude usage limit::"), out)
-        self.assertIn("anna: stopped on a Claude usage limit", summary)
+        self.assertTrue(out.startswith("::warning title=anna stopped on a model usage limit::"), out)
+        self.assertIn("anna: stopped on a model usage limit", summary)
         self.assertNotIn("Secret", out + summary)
 
     def test_finished_run_prints_no_report_text(self):

@@ -1,4 +1,4 @@
-"""Says how an agent's `claude -p` run ended, without printing anything it wrote.
+"""Says how an agent's `agy -p` (or legacy `claude -p`) run ended, without printing anything it wrote.
 
 The workflow's logs are public, so this reads results/agent-output.json and
 results/agent-errors.txt (both encrypted later with the rest of the results)
@@ -13,28 +13,29 @@ import json, os, re, sys
 
 # (status, regex on the agent's final message and its stderr), first match wins
 PATTERNS = [
-    ("usage_limit", r"hit your (?:[\w-]+ )?limit|usage limit|limit reached|weekly limit"),
-    ("auth", r"invalid api key|authentication_error|oauth token|please run /login|api error: 401|"
+    ("usage_limit", r"hit your (?:[\w-]+ )?limit|usage limit|limit reached|weekly limit|quota exceeded"),
+    ("auth", r"API_KEY_INVALID|API key not valid|invalid api key|authentication_error|authentication required|"
+             r"oauth token|please run /login|api error: 401|Error 401|PERMISSION_DENIED|"
              r"invalid bearer token|not logged in"),
     ("credit", r"credit balance is too low|insufficient[_ ](?:credit|balance|quota)|billing"),
-    ("rate_limit", r"rate_limit_error|api error: 429|too many requests"),
-    ("overloaded", r"overloaded_error|api error: 529|overloaded"),
+    ("rate_limit", r"rate_limit_error|RESOURCE_EXHAUSTED|api error: 429|Error 429|too many requests"),
+    ("overloaded", r"overloaded_error|api error: 529|Error 503|UNAVAILABLE|overloaded"),
 ]
 PROBLEMS = {
-    "usage_limit": ("warning", "stopped on a Claude usage limit",
-                    "Your plan's usage limit was reached. Wait for the reset, then run fewer personas at once "
+    "usage_limit": ("warning", "stopped on a model usage limit",
+                    "Your plan or API quota limit was reached. Wait for the reset, then run fewer personas at once "
                     "(android_personas, ios_personas)."),
     "auth": ("error", "could not sign in to the model API",
              "The token or key was refused. Set it again with: gh secret set {secret}"),
     "credit": ("error", "found no API credit",
-               "The API account has no credit left. Add some, or use a Claude subscription token: "
-               "gh secret set CLAUDE_CODE_OAUTH_TOKEN (token from claude setup-token)."),
+               "The API account has no credit or quota left. Check billing, or set a valid key: "
+               "gh secret set GEMINI_API_KEY."),
     "rate_limit": ("warning", "hit the API rate limit",
                    "Requests were refused for too long (429). Run fewer personas at once."),
     "overloaded": ("warning", "stopped because the model API was overloaded",
-                   "The API answered 529 for too long. Run it again later."),
+                   "The API was temporarily overloaded or unavailable. Run it again later."),
     "no_output": ("error", "produced no output",
-                  "Claude Code wrote no result: see results/agent-errors.txt in the decrypted results."),
+                  "The agent wrote no result: see results/agent-errors.txt in the decrypted results."),
     "error": ("warning", "stopped on an error",
               "See results/agent-output.json in the decrypted results."),
 }
@@ -49,7 +50,7 @@ def read(path):
 
 
 def classify(output_path, errors_path):
-    """(status, details) where details has the number of turns and the cost when known."""
+    """(status, details) where details has the number of turns and cost/duration when known."""
     raw, errors = read(output_path).strip(), read(errors_path)
     try:
         data = json.loads(raw) if raw else None
@@ -59,14 +60,20 @@ def classify(output_path, errors_path):
         data = next((m for m in reversed(data) if isinstance(m, dict) and m.get("type") == "result"), None)
     details = {}
     if isinstance(data, dict):
-        for key in ("num_turns", "total_cost_usd"):
+        for key in ("num_turns", "total_cost_usd", "duration_seconds"):
             if isinstance(data.get(key), (int, float)) and not isinstance(data.get(key), bool):
                 details[key] = data[key]
+        if data.get("status") == "SUCCESS":
+            return "finished", details
         if data.get("subtype") == "success" and not data.get("is_error"):
             return "finished", details
         if data.get("subtype") == "error_max_turns":
             return "max_turns", details
-    text = ((data.get("result") or "") if isinstance(data, dict) else raw) + "\n" + errors
+    text = (
+        ((data.get("error") or data.get("response") or data.get("result") or "") if isinstance(data, dict) else raw)
+        + "\n"
+        + errors
+    )
     for status, pattern in PATTERNS:
         if re.search(pattern, str(text), re.I):
             return status, details
@@ -81,6 +88,8 @@ def describe(status, details):
         parts.append(f"{details['num_turns']} turns")
     if "total_cost_usd" in details:
         parts.append(f"${details['total_cost_usd']:.2f}")
+    elif "duration_seconds" in details:
+        parts.append(f"{details['duration_seconds']:.0f}s")
     label = {"finished": "finished", "max_turns": "used all its turns"}.get(status) or PROBLEMS[status][1]
     return label + (f" ({', '.join(parts)})" if parts else "")
 
@@ -88,9 +97,9 @@ def describe(status, details):
 def secret_name():
     if os.environ.get("LLM_BASE_URL"):
         return "LLM_API_KEY"
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "ANTHROPIC_API_KEY"
-    return "CLAUDE_CODE_OAUTH_TOKEN (token from claude setup-token)"
+    if os.environ.get("GEMINI_API_KEY") or not os.environ.get("ANTHROPIC_API_KEY"):
+        return "GEMINI_API_KEY"
+    return "ANTHROPIC_API_KEY"
 
 
 def main(argv):

@@ -1,5 +1,5 @@
 # One click: build the app for Android and iOS, then give one emulator or
-# simulator to each persona, each driven by a headless Claude Code agent.
+# simulator to each persona, each driven by a headless Antigravity CLI (agy) agent.
 # Everything readable (build logs, screenshots, reports) is encrypted with
 # results_public.pem before upload, because logs of a public repo are public.
 # Decrypt on your machine with: bash scripts/collect.sh <run id>
@@ -48,10 +48,10 @@ on:
         description: "Bug to reproduce instead of exploring: an issue (owner/repo#123 or its URL) or the steps as text. Agents follow it: read it first"
         default: ""
       model:
-        description: "Model: sonnet, opus, haiku (cheapest) or a full Claude id. With llm_base_url, the provider's model name"
-        default: sonnet
+        description: "Antigravity model slug (gemini-3.8-flash-high, gemini-4-hydrogen-high, gemini-4-neon-high, gemini-3.1-pro-high). With llm_base_url, the endpoint model"
+        default: gemini-3.8-flash-high
       llm_base_url:
-        description: "Optional: any Anthropic-compatible API instead of Claude (OpenRouter, DeepSeek, Kimi, GLM...), key in the LLM_API_KEY secret. Quality depends on how well the model reads screenshots and reasons: docs/cheaper-models.md"
+        description: "Optional: Gemini-compatible endpoint (GOOGLE_GEMINI_BASE_URL), key in the LLM_API_KEY secret"
         default: ""
       block_hosts:
         description: Hosts the app must not reach during tests (analytics, ads), space-separated
@@ -192,7 +192,10 @@ jobs:
       - name: Decrypt APK
         env: { ARTIFACT_PASSPHRASE: "${{ secrets.ARTIFACT_PASSPHRASE }}" }
         run: openssl enc -d -aes-256-cbc -pbkdf2 -in app.apk.enc -out app.apk -pass env:ARTIFACT_PASSPHRASE
-      - run: pip install -q pillow && npm install -g --silent @anthropic-ai/claude-code
+      - run: |
+          pip install -q pillow
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # The emulator resolves DNS through the host (-dns-server 127.0.0.1):
       # dnsmasq answers 0.0.0.0 for blocked hosts, iptables drops their real IPs.
@@ -227,8 +230,7 @@ jobs:
       - name: Emulator + agent
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PERSONA: ${{ matrix.persona }}
           DEVICE: ${{ matrix.device }}
           FONT_SCALE: ${{ matrix.font_scale }}
@@ -279,11 +281,12 @@ jobs:
           mkdir -p app && tar xzf app-ios.tgz -C app
       - name: Latest Xcode
         run: sudo xcode-select -s "$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)"
-      - name: Tools (AXe, Pillow, Claude Code)
+      - name: Tools (AXe, Pillow, Antigravity CLI)
         run: |
           brew install -q cameroncooke/axe/axe
           python3 -m pip install -q --break-system-packages pillow
-          npm install -g --silent @anthropic-ai/claude-code
+          curl -fsSL https://antigravity.google/cli/install.sh | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       # The simulator uses the Mac's network: /etc/hosts + pf block the hosts.
       - name: Block analytics and ad hosts
@@ -332,8 +335,7 @@ jobs:
 
       - name: Agent
         env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PERSONA: ${{ matrix.persona }}
           TEXT_SIZE: ${{ matrix.text_size }}
           THEME: ${{ matrix.theme }}

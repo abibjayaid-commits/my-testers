@@ -196,22 +196,29 @@ def as_id(x):
 
 
 def group_with_claude(findings):
-    """Groups the reports with `claude -p`. None when the CLI is missing or its answer is unusable."""
-    exe = shutil.which("claude")
+    """Groups the reports with `agy -p` (or `claude -p` fallback). None when missing or unusable."""
+    agy_exe = shutil.which("agy")
+    claude_exe = None if agy_exe else shutil.which("claude")
+    exe = agy_exe or claude_exe
     if not exe or os.environ.get("SUMMARY_GROUPING", "1") == "0" or len(findings) < 2:
         return None
     reports = "\n".join(f'{f["id"]}. [{f["persona"]}, {f["severity"]}, {f["screen"]}] {f["title"]}'
                         for f in findings)
-    print(f"Grouping {len(findings)} reports with Claude...", file=sys.stderr)
+    agent_name = "Antigravity" if agy_exe else "Claude"
+    print(f"Grouping {len(findings)} reports with {agent_name}...", file=sys.stderr)
+    cmd = [exe, "-p", "--output-format", "json"]
+    model = os.environ.get("SUMMARY_MODEL") or ("" if agy_exe else "sonnet")
+    if model:
+        cmd += ["--model", model]
     try:
-        out = subprocess.run([exe, "-p", "--output-format", "json",
-                              "--model", os.environ.get("SUMMARY_MODEL", "sonnet")],
+        out = subprocess.run(cmd,
                              input=PROMPT.format(classes=", ".join(CLASSES), reports=reports),
                              capture_output=True, text=True, timeout=600)
-        text = json.loads(out.stdout).get("result", "")
+        payload = json.loads(out.stdout)
+        text = payload.get("response") or payload.get("result") or ""
         groups = json.loads(re.search(r"\{.*\}", text, re.S).group(0))["groups"]
     except Exception as e:  # no login, usage limit, timeout, not JSON...
-        print(f"Claude grouping skipped ({type(e).__name__}): identical titles only", file=sys.stderr)
+        print(f"{agent_name} grouping skipped ({type(e).__name__}): identical titles only", file=sys.stderr)
         return None
     valid, seen, result = {f["id"] for f in findings}, set(), []
     for g in groups if isinstance(groups, list) else []:
@@ -258,10 +265,10 @@ def render(findings, scores, groups, by_claude, repro=None, walk=None):
     lines.append(head + ".")
     if by_claude:
         alone = sum(len(r["personas"]) == 1 for r in rows)
-        lines.append(f"Claude grouped them into {len(rows)} distinct issues: {alone} found by one persona "
+        lines.append(f"Reports grouped into {len(rows)} distinct issues: {alone} found by one persona "
                      f"only, {len(rows) - alone} by several. Open the screenshots before you trust a group.")
     elif findings:
-        lines.append("Only identical titles are merged: install the claude CLI to group the reports "
+        lines.append("Only identical titles are merged: install the agy (or claude) CLI to group the reports "
                      "that describe the same bug.")
     extra = (" Class |", "---|") if by_claude else ("", "")
     lines += ["", "| Severity | Issue | Personas | Screen |" + extra[0], "|---|---|---|---|" + extra[1]]

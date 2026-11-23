@@ -42,7 +42,7 @@ iOS
    each kind once, with the screens where you saw it: minor, unless it stops a task.
 
 ## Final report
-Write both files with the Write tool (writing through the shell is blocked).
+Write both files under `results/<persona>/` using your file-writing tool (e.g. `write_file`).
 1. `results/<persona>/report.md`
    - 5-line summary with the device.
    - Issues, most severe first. For each: screenshot number(s), steps to reproduce,
